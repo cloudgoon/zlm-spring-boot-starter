@@ -13,6 +13,11 @@ import lombok.Data;
 public class PlayUrl {
 
     /**
+     * 是否在线
+     */
+    private Boolean isOnline;
+
+    /**
      * RTSP协议播放地址
      */
     @JSONField(name = "rtsp")

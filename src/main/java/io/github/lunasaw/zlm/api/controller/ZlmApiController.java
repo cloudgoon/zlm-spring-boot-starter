@@ -3,7 +3,6 @@ package io.github.lunasaw.zlm.api.controller;
 import com.luna.common.check.Assert;
 import io.github.lunasaw.zlm.api.ZlmRestService;
 import io.github.lunasaw.zlm.config.ZlmNode;
-import io.github.lunasaw.zlm.config.ZlmProperties;
 import io.github.lunasaw.zlm.entity.*;
 import io.github.lunasaw.zlm.entity.req.CloseStreamsReq;
 import io.github.lunasaw.zlm.entity.req.MediaReq;
@@ -11,7 +10,6 @@ import io.github.lunasaw.zlm.entity.req.RecordReq;
 import io.github.lunasaw.zlm.entity.req.SnapshotReq;
 import io.github.lunasaw.zlm.entity.rtp.*;
 import io.github.lunasaw.zlm.hook.service.ZlmHookService;
-import io.github.lunasaw.zlm.node.LoadBalancer;
 import io.github.lunasaw.zlm.node.NodeSupplier;
 import io.github.lunasaw.zlm.node.service.NodeService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,9 +22,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.io.ResourceLoader;
+import org.springframework.util.ResourceUtils;
 import org.springframework.web.bind.annotation.*;
 
-
+import java.io.File;
 import java.util.List;
 import java.util.Map;
 
@@ -54,7 +54,6 @@ public class ZlmApiController {
 
     @Autowired
     private ZlmHookService zlmHookService;
-
     /**
      * 获取可用的 ZLM 节点
      * 支持通过请求头 X-Node-Key 指定节点
@@ -558,6 +557,128 @@ public class ZlmApiController {
             @Parameter(description = "截图配置") @RequestBody SnapshotReq snapshotReq) {
         ZlmNode node = getAvailableNode();
         return ZlmRestService.getSnap(node.getHost(), node.getSecret(), snapshotReq);
+    }
+
+    /**
+     * 获取截图URL - 返回可访问的URL路径
+     */
+    @PostMapping("/snapshot-url")
+    @Operation(summary = "获取截图URL", description = "获取指定媒体流的截图并返回可访问的URL")
+    @ApiResponse(responseCode = "200", description = "截图URL获取成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> getSnapUrl(
+            @Parameter(description = "截图配置") @RequestBody SnapshotReq snapshotReq) {
+
+        try {
+            ZlmNode node = getAvailableNode();
+
+            // 生成唯一的文件名
+            String timestamp = String.valueOf(System.currentTimeMillis());
+            String fileName = "snapshot_" + timestamp + ".jpg";
+
+            // 使用 Spring Boot 的类路径处理静态资源
+            String snapshotDir = "snapshots";
+            File staticResourceDir = getStaticResourceDirectory();
+            File snapshotFolder = new File(staticResourceDir, snapshotDir);
+
+            // 确保静态资源目录存在
+            if (!snapshotFolder.exists()) {
+                boolean created = snapshotFolder.mkdirs();
+                if (!created) {
+                    throw new RuntimeException("无法创建截图目录: " + snapshotFolder.getAbsolutePath());
+                }
+            }
+
+            // 设置完整的文件保存路径
+            String fullSavePath = new File(snapshotFolder, fileName).getAbsolutePath();
+            snapshotReq.setSavePath(fullSavePath);
+
+            // 调用ZLM API获取截图
+            String filePath = ZlmRestService.getSnap(node.getHost(), node.getSecret(), snapshotReq);
+
+            if (filePath != null && !filePath.trim().isEmpty()) {
+                // 验证文件是否实际创建
+                File savedFile = new File(filePath);
+                if (savedFile.exists() && savedFile.length() > 0) {
+                    // 构建HTTP访问URL
+                    String baseUrl = getBaseUrl();
+                    String accessUrl = baseUrl + "/" + snapshotDir + "/" + fileName;
+
+                    ServerResponse<String> response = new ServerResponse<>();
+                    response.setCode(0);
+                    response.setMsg("截图获取成功");
+                    response.setData(accessUrl);
+                    return response;
+                } else {
+                    ServerResponse<String> response = new ServerResponse<>();
+                    response.setCode(-1);
+                    response.setMsg("截图文件生成失败");
+                    return response;
+                }
+            } else {
+                ServerResponse<String> response = new ServerResponse<>();
+                response.setCode(-1);
+                response.setMsg("ZLM API调用失败");
+                return response;
+            }
+
+        } catch (Exception e) {
+            log.error("获取截图URL失败: {}", e.getMessage(), e);
+            ServerResponse<String> response = new ServerResponse<>();
+            response.setCode(-1);
+            response.setMsg("截图获取失败: " + e.getMessage());
+            return response;
+        }
+    }
+
+    /**
+     * 获取静态资源目录
+     * 支持开发环境和生产环境（JAR包）
+     */
+    private File getStaticResourceDirectory() throws Exception {
+        // 首先尝试获取 Spring Boot 应用的静态资源目录
+        try {
+            File file = ResourceUtils.getFile("classpath:static");
+            if (file.exists() && file.isDirectory()) {
+                log.info("使用类路径静态资源目录: {}", file.getAbsolutePath());
+                return file;
+            }
+        } catch (Exception e) {
+            log.debug("无法获取类路径静态资源目录: {}", e.getMessage());
+        }
+
+        // 使用临时目录（配合 ZlmWebConfig 的资源映射）
+        String tempDir = System.getProperty("java.io.tmpdir");
+        File appTempDir = new File(tempDir, "zlm-snapshots");
+        if (!appTempDir.exists()) {
+            boolean created = appTempDir.mkdirs();
+            if (!created) {
+                throw new RuntimeException("无法创建临时目录: " + appTempDir.getAbsolutePath());
+            }
+        }
+        log.info("使用临时目录存储截图: {}", appTempDir.getAbsolutePath());
+        return appTempDir;
+    }
+
+    /**
+     * 获取基础URL
+     */
+    private String getBaseUrl() {
+        // 从请求中获取基础URL
+        String scheme = request.getScheme();
+        String serverName = request.getServerName();
+        int serverPort = request.getServerPort();
+
+        StringBuilder baseUrl = new StringBuilder();
+        baseUrl.append(scheme).append("://").append(serverName);
+
+        // 只有在非标准端口时才添加端口号
+        if ((scheme.equals("http") && serverPort != 80) ||
+                (scheme.equals("https") && serverPort != 443)) {
+            baseUrl.append(":").append(serverPort);
+        }
+
+        return baseUrl.toString();
     }
 
     // ==================== RTP服务器管理接口 ====================
