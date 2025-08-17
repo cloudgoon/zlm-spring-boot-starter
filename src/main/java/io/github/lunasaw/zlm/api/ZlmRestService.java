@@ -330,9 +330,6 @@ public class ZlmRestService {
         String app = mediaReq.getApp();
         String stream = mediaReq.getStream();
 
-        MediaOnlineStatus mediaOnline = isMediaOnline(host, secret, mediaReq);
-        Boolean online = Optional.ofNullable(mediaOnline).map(MediaOnlineStatus::getOnline).orElse(false);
-        urls.setIsOnline(online);
 
         // 获取主机地址
         String baseHost = host.replace("http://", "").replace("https://", "");
