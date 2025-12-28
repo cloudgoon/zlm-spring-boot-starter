@@ -40,7 +40,7 @@ public class ZlmHookController {
     @Autowired
     private ZlmHookService zlmHookService;
 
-    @Qualifier("taskExecutor")
+    @Qualifier("zlmTaskExecutor")
     @Autowired
     private AsyncTaskExecutor executor;
 

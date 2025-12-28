@@ -51,8 +51,8 @@ public class ZlmThreadPoolConfig {
     /**
      * @return
      */
-    @Bean("taskExecutor") // bean的名称，默认为首字母小写的方法名
-    public ThreadPoolTaskExecutor taskExecutor() {
+    @Bean("zlmTaskExecutor") // bean的名称，默认为首字母小写的方法名
+    public ThreadPoolTaskExecutor zlmTaskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(corePoolSize);
         executor.setMaxPoolSize(maxPoolSize);
