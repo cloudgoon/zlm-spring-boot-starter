@@ -115,9 +115,9 @@ public class ZlmServiceUnitTest {
         // 测试ZLM节点默认值
         ZlmNode node = new ZlmNode();
 
-        // 测试默认值
-        assertFalse(node.isEnabled());
-        assertFalse(node.isHookEnabled());
+        // 测试默认值（ZlmNode 默认 enabled/hookEnabled 均为 true）
+        assertTrue(node.isEnabled());
+        assertTrue(node.isHookEnabled());
 
         // 测试设置值
         node.setEnabled(true);

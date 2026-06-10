@@ -53,17 +53,18 @@ public class NodeServiceTest {
     }
 
     /**
-     * 测试使用负载均衡策略选择节点
+     * 测试根据 serverId 精确查找节点（selectNode(key) 语义为按 serverId 精确查找）
      */
     @Test
     public void testSelectNodeWithKey() {
         // 准备测试数据
         setupTestNodes();
 
-        // 测试使用key选择节点
-        ZlmNode selectedNode = nodeService.selectNode("test-key");
+        // 测试按 serverId 精确查找节点
+        ZlmNode selectedNode = nodeService.selectNode("123");
         assert selectedNode != null;
         assert selectedNode.isEnabled();
+        assert Objects.equals(selectedNode.getServerId(), "123");
 
         System.out.println("selectNode with key测试通过，选中节点: " + selectedNode.getServerId());
     }
@@ -85,7 +86,7 @@ public class NodeServiceTest {
     }
 
     /**
-     * 测试负载均衡的分布情况
+     * 测试负载均衡的分布情况（无参 selectNode() 走默认负载均衡策略 round_robin）
      */
     @Test
     public void testLoadBalancingDistribution() {
@@ -96,9 +97,9 @@ public class NodeServiceTest {
         AtomicInteger node2Count = new AtomicInteger(0);
         AtomicInteger node3Count = new AtomicInteger(0);
 
-        // 执行多次选择，统计分布
+        // 执行多次选择，统计分布（round_robin 会轮询所有节点）
         for (int i = 0; i < 1000; i++) {
-            ZlmNode selectedNode = nodeService.selectNode("distribution-test-" + i);
+            ZlmNode selectedNode = nodeService.selectNode();
             if (Objects.equals(selectedNode.getServerId(), "123")) {
                 node1Count.getAndIncrement();
             } else if (Objects.equals(selectedNode.getServerId(), "1234")) {

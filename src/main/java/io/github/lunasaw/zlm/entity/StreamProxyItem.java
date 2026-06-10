@@ -18,6 +18,18 @@ import java.util.Map;
 public class StreamProxyItem {
 
     /**
+     * 代理唯一key（listStreamProxy 返回）
+     */
+    @JSONField(name = "key")
+    private String  key;
+
+    /**
+     * 代理状态（listStreamProxy 返回，0:未连接,1:已连接等）
+     */
+    @JSONField(name = "status")
+    private Integer status;
+
+    /**
      * 添加的流的虚拟主机，例如__defaultVhost__
      */
     @JSONField(name = "vhost")

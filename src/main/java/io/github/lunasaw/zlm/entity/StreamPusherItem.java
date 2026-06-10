@@ -13,6 +13,12 @@ import java.util.Map;
 public class StreamPusherItem {
 
     /**
+     * 代理唯一key（listStreamPusherProxy 返回）
+     */
+    @JSONField(name = "key")
+    private String  key;
+
+    /**
      * 添加的流的虚拟主机，例如__defaultVhost__
      */
     @JSONField(name = "vhost")

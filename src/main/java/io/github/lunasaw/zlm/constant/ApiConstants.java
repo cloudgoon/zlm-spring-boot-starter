@@ -164,4 +164,82 @@ public class ApiConstants {
     /*点播mp4文件*/
     public static final String LOAD_MP4_FILE = API_INDEX + "/loadMP4File";
 
+    /*获取拉流代理列表*/
+    public static final String LIST_STREAM_PROXY = API_INDEX + "/listStreamProxy";
+
+    /*获取推流代理列表*/
+    public static final String LIST_STREAM_PUSHER_PROXY = API_INDEX + "/listStreamPusherProxy";
+
+    /*获取FFmpeg拉流代理列表*/
+    public static final String LIST_FFMPEG_SOURCE = API_INDEX + "/listFFmpegSource";
+
+    /*获取rtp发送列表*/
+    public static final String LIST_RTP_SENDER = API_INDEX + "/listRtpSender";
+
+    /*添加录制任务(支持回溯)*/
+    public static final String START_RECORD_TASK = API_INDEX + "/startRecordTask";
+
+    /*删除截图文件夹*/
+    public static final String DELETE_SNAP_DIRECTORY = API_INDEX + "/deleteSnapDirectory";
+
+    /*添加探针*/
+    public static final String ADD_PROBE = API_INDEX + "/addProbe";
+
+    /*RTP 双向对讲推流*/
+    public static final String START_SEND_RTP_TALK = API_INDEX + "/startSendRtpTalk";
+
+    /*下载文件*/
+    public static final String DOWNLOAD_FILE = API_INDEX + "/downloadFile";
+
+    /*下载二进制(配置文件等)*/
+    public static final String DOWNLOAD_BIN = API_INDEX + "/downloadBin";
+
+    /*多屏拼接-开始*/
+    public static final String STACK_START = API_INDEX + "/stack/start";
+
+    /*多屏拼接-重置*/
+    public static final String STACK_RESET = API_INDEX + "/stack/reset";
+
+    /*多屏拼接-停止*/
+    public static final String STACK_STOP = API_INDEX + "/stack/stop";
+
+    /*WebRTC-注册到信令服务器*/
+    public static final String ADD_WEBRTC_ROOM_KEEPER = API_INDEX + "/addWebrtcRoomKeeper";
+
+    /*WebRTC-从信令服务器注销*/
+    public static final String DEL_WEBRTC_ROOM_KEEPER = API_INDEX + "/delWebrtcRoomKeeper";
+
+    /*WebRTC-房间守护者列表*/
+    public static final String LIST_WEBRTC_ROOM_KEEPERS = API_INDEX + "/listWebrtcRoomKeepers";
+
+    /*WebRTC-房间列表*/
+    public static final String LIST_WEBRTC_ROOMS = API_INDEX + "/listWebrtcRooms";
+
+    /*WebRTC-代理播放器信息*/
+    public static final String GET_WEBRTC_PROXY_PLAYER_INFO = API_INDEX + "/getWebrtcProxyPlayerInfo";
+
+    /*WebRTC交互(SDP)*/
+    public static final String WEBRTC = API_INDEX + "/webrtc";
+
+    /*WebRTC WHIP 推流(SDP)*/
+    public static final String WHIP = API_INDEX + "/whip";
+
+    /*WebRTC WHEP 播放(SDP)*/
+    public static final String WHEP = API_INDEX + "/whep";
+
+    /*删除WebRTC连接*/
+    public static final String DELETE_WEBRTC = API_INDEX + "/delete_webrtc";
+
+    /*搜索ONVIF设备*/
+    public static final String SEARCH_ONVIF_DEVICE = API_INDEX + "/searchOnvifDevice";
+
+    /*获取ONVIF设备流地址*/
+    public static final String GET_ONVIF_STREAM_URL = API_INDEX + "/getStreamUrl";
+
+    /*登录鉴权*/
+    public static final String LOGIN = API_INDEX + "/login";
+
+    /*注销鉴权*/
+    public static final String LOGOUT = API_INDEX + "/logout";
+
 }

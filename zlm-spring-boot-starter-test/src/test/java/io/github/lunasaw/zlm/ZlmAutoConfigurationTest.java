@@ -1,13 +1,10 @@
 package io.github.lunasaw.zlm;
 
 import io.github.lunasaw.zlm.config.ZlmAutoConfiguration;
-import io.github.lunasaw.zlm.config.ZlmProperties;
 import io.github.lunasaw.zlm.node.LoadBalancer;
 import io.github.lunasaw.zlm.node.NodeSupplier;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.TestPropertySource;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -18,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author luna
  * @date 2024/1/5
  */
-@SpringBootTest(classes = {ZlmAutoConfiguration.class, ZlmAutoConfigurationTest.TestConfig.class})
+@SpringBootTest(classes = ZlmAutoConfiguration.class)
 @TestPropertySource(properties = {
         "zlm.enable=true",
         "zlm.balance=round_robin",
@@ -29,16 +26,6 @@ import static org.junit.jupiter.api.Assertions.*;
         "zlm.nodes[0].hook-enabled=true"
 })
 public class ZlmAutoConfigurationTest {
-
-    @TestConfiguration
-    static class TestConfig {
-        @Bean
-        public ZlmProperties zlmProperties() {
-            ZlmProperties properties = new ZlmProperties();
-            // Spring Boot会自动绑定属性，这里主要用于测试
-            return properties;
-        }
-    }
 
     @Test
     void testNodeSupplierBeanCreation() {

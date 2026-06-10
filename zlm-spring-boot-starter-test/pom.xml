@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <version>1.0.10-SNAPSHOT</version>
+    <version>1.0.11</version>
     <groupId>io.github.lunasaw</groupId>
     <artifactId>zlm-spring-boot-starter-test</artifactId>
     <packaging>jar</packaging>
@@ -61,6 +61,14 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- JUnit Platform 上运行 JUnit4(@RunWith/SpringRunner)测试所需的 vintage 引擎；
+             缺失时 Spring Boot 3.x 的 surefire 默认 JUnit Platform provider 会静默报告 "Tests run: 0" -->
+        <dependency>
+            <groupId>org.junit.vintage</groupId>
+            <artifactId>junit-vintage-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-inline</artifactId>
@@ -80,6 +88,26 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.12</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

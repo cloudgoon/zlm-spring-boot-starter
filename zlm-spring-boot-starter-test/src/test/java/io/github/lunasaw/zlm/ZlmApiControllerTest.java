@@ -538,7 +538,7 @@ public class ZlmApiControllerTest {
                 .andDo(print())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.msg").value("节点不存在: " + nonExistentNodeId));
+                .andExpect(jsonPath("$.msg").value("未找到指定key的ZLM节点"));
     }
 
     @Test
@@ -588,7 +588,7 @@ public class ZlmApiControllerTest {
         // Mock LoadBalancer 返回 null
         when(loadBalancer.selectNode("default")).thenReturn(null);
 
-        // 执行测试，应该抛出异常
+        // 选点失败应被优雅处理为业务响应（msg=未找到可用的ZLM节点），而非 NPE（方案 §9.3 #7）
         mockMvc.perform(get("/zlm/api/version"))
                 .andDo(print())
                 .andExpect(status().isOk())
@@ -627,7 +627,7 @@ public class ZlmApiControllerTest {
                 .andDo(print())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.msg").value("指定的节点不存在: invalid-node"));
+                .andExpect(jsonPath("$.msg").value("未找到指定key的ZLM节点"));
     }
 
     @Test
@@ -739,7 +739,7 @@ public class ZlmApiControllerTest {
                 .andDo(print())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.msg").value("节点不存在: " + nonExistentNodeId));
+                .andExpect(jsonPath("$.msg").value("未找到指定key的ZLM节点"));
     }
 
     @Test
@@ -812,7 +812,7 @@ public class ZlmApiControllerTest {
                         .andDo(print())
                         .andExpect(status().isOk())
                         .andExpect(jsonPath("$.code").value(0))
-                        .andExpect(jsonPath("$.msg").value("指定的节点不存在: " + invalidKey));
+                        .andExpect(jsonPath("$.msg").value("未找到指定key的ZLM节点"));
             }
         }
     }

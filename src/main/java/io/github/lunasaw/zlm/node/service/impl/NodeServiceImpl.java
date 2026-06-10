@@ -36,8 +36,10 @@ public class NodeServiceImpl implements NodeService {
 
     @Override
     public ZlmNode selectNode() {
-        // 使用默认负载均衡策略选择节点
-        return loadBalancer.selectNode("default");
+        // 使用默认负载均衡策略选择节点；选点失败时抛 IllegalArgumentException（由 controller 统一捕获为友好响应，避免下游 NPE）
+        ZlmNode node = loadBalancer.selectNode("default");
+        Assert.notNull(node, "未找到可用的ZLM节点");
+        return node;
     }
 
     @Override

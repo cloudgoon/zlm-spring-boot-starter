@@ -7,7 +7,7 @@ import io.github.lunasaw.zlm.node.NodeSupplier;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 加权随机负载均衡器
@@ -18,7 +18,6 @@ import java.util.Random;
 @Slf4j
 public class WeightRandomLoadBalancer implements LoadBalancer {
 
-    private final Random random = new Random();
     private volatile NodeSupplier nodeSupplier;
 
     @Override
@@ -37,12 +36,12 @@ public class WeightRandomLoadBalancer implements LoadBalancer {
         // 计算总权重
         int totalWeight = nodes.stream().mapToInt(ZlmNode::getWeight).sum();
         if (totalWeight <= 0) {
-            // 如果总权重为0，则随机选择
-            return nodes.get(random.nextInt(nodes.size()));
+            // 如果总权重为0，则随机选择（ThreadLocalRandom 避免共享 Random 的 CAS 竞争）
+            return nodes.get(ThreadLocalRandom.current().nextInt(nodes.size()));
         }
 
         // 基于权重随机选择
-        int randomNum = random.nextInt(totalWeight);
+        int randomNum = ThreadLocalRandom.current().nextInt(totalWeight);
         int currentWeight = 0;
 
         for (ZlmNode node : nodes) {

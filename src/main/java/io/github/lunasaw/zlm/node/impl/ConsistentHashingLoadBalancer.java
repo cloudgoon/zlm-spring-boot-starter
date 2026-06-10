@@ -20,9 +20,17 @@ public class ConsistentHashingLoadBalancer implements LoadBalancer {
     private static final int VIRTUAL_NODE_COUNT = 10;
     private volatile NodeSupplier nodeSupplier;
 
+    /** 缓存的哈希环，仅在节点集合「指纹」变化时重建，避免每次 selectNode 全量重建 */
+    private volatile TreeMap<Integer, ZlmNode> cachedRing;
+    /** 当前缓存环对应的节点指纹（排序后的 serverId+weight 拼接） */
+    private volatile String                    cachedFingerprint;
+
     @Override
     public void setNodeSupplier(NodeSupplier nodeSupplier) {
         this.nodeSupplier = nodeSupplier;
+        // 节点提供器变更，缓存失效
+        this.cachedRing = null;
+        this.cachedFingerprint = null;
         log.info("设置节点提供器: {}", nodeSupplier != null ? nodeSupplier.getName() : "null");
     }
 
@@ -37,9 +45,9 @@ public class ConsistentHashingLoadBalancer implements LoadBalancer {
             return null;
         }
 
-        // 构建哈希环
-        TreeMap<Integer, ZlmNode> hashRing = buildHashRing(nodes);
-        if (hashRing.isEmpty()) {
+        // 仅在节点集合变化时重建哈希环
+        TreeMap<Integer, ZlmNode> hashRing = getOrBuildHashRing(nodes);
+        if (hashRing == null || hashRing.isEmpty()) {
             return null;
         }
 
@@ -56,6 +64,32 @@ public class ConsistentHashingLoadBalancer implements LoadBalancer {
     @Override
     public String getType() {
         return LoadBalancerEnums.CONSISTENT_HASHING.getType();
+    }
+
+    /**
+     * 获取缓存的哈希环；节点指纹变化时重建并更新缓存。
+     */
+    private TreeMap<Integer, ZlmNode> getOrBuildHashRing(List<ZlmNode> nodes) {
+        String fingerprint = fingerprint(nodes);
+        TreeMap<Integer, ZlmNode> ring = cachedRing;
+        if (ring != null && fingerprint.equals(cachedFingerprint)) {
+            return ring;
+        }
+        // 双重检查，避免并发重复构建（构建结果幂等，无需加锁即可保证最终一致）
+        TreeMap<Integer, ZlmNode> built = buildHashRing(nodes);
+        cachedRing = built;
+        cachedFingerprint = fingerprint;
+        return built;
+    }
+
+    /**
+     * 计算节点集合指纹：排序后的 serverId#weight 拼接，节点增删/权重变化都会改变指纹。
+     */
+    private String fingerprint(List<ZlmNode> nodes) {
+        return nodes.stream()
+                .map(n -> n.getServerId() + "#" + n.getWeight())
+                .sorted()
+                .collect(java.util.stream.Collectors.joining(","));
     }
 
     /**

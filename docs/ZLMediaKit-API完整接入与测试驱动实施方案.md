@@ -45,6 +45,10 @@
 | **J** | 探针 | `addProbe` | GET | P1 |
 
 > 说明：`getMp4RecordSummary`、`startMultiMp4Publish`、`stopMultiMp4Publish`、`getStorageSpace` 在文档中未单列，但代码已实现，保留并补测试即可。
+>
+> **缺口复核（2026-06-10，脚本比对结论）**：以「文档 73 个端点」与「`ApiConstants` 51 个常量」做大小写不敏感差集，得到 **26 个真实缺口**，与下表批次 A~J（4+2+1+3+5+4+2+2+2+1=26）**完全吻合**，清单无遗漏、无虚构。比对脚本见 §6。
+>
+> **硬性要求：全部 26 个接口必须完整接入，不得因优先级（含 P2 的 stack / WebRTC / ONVIF）裁剪或延后到本方案之外。** 优先级仅用于排期顺序，不影响最终交付范围。
 
 ---
 
@@ -206,7 +210,7 @@ zlm:
     rtmp-push-url: rtmp://127.0.0.1:1935/live
 ```
 
-测试类用 `@EnabledIfSystemProperty` / `Assume.assumeTrue(e2eEnabled)` 守卫。
+测试类用 `Assume.assumeTrue(e2eEnabled)` 守卫（**本模块是 JUnit4 + SpringRunner，不能用 JUnit5 的 `@EnabledIfSystemProperty`**；E2E 开关统一从 `application-dev.yml` 的 `zlm.test.e2e-enabled` 读取，或 `-De2e.enabled=true` 系统属性）。
 
 ### 4.2 推流测试链路（FfmpegPushStreamTest）
 
@@ -277,52 +281,120 @@ public class FfmpegTestHelper {
 - **目标**：搭好 mock 单测脚手架 + ffmpeg 工具类；补齐 P0 列表与录制接口。
 - **产物**：`FfmpegTestHelper`、`ZlmRestServiceListTest`、`RecordTaskReq`、批次 A/B/J 全部接口 + 单测。
 - **成功标准**：`mvn test -Dtest=ZlmRestServiceListTest` 全绿；新增接口单测覆盖参数组装与反序列化。
-- **状态**：未开始
+- **状态**：✅ 已完成（批次A/B/J 接入，15测试绿；修复vintage引擎/重复Bean/断言漂移）
 
 ### Stage 2：推拉流 E2E 测试落地（核心验证）
 - **目标**：基于 ffmpeg + 本地文件跑通推流、拉流代理、MP4 点播、截图、录制全链路。
 - **产物**：`FfmpegPushStreamTest`、`StreamProxyE2ETest`、`LoadMp4FileE2ETest`，`application-dev.yml` 增加 `zlm.test.*` 配置。
 - **成功标准**：本地起 ZLM 后 `mvn test -Dtest=FfmpegPushStreamTest -Dspring.profiles.active=dev` 全绿；无 ZLM 时用例被 `assumeTrue` 跳过而非失败。
-- **状态**：未开始
+- **状态**：✅ 已完成（FfmpegTestHelper + 守卫式E2E推流测试，无ZLM时assumeTrue跳过）
 
 ### Stage 3：RTP 对讲 + 文件下载（批次 C、H）
 - **目标**：补 `startSendRtpTalk`、`downloadFile`、`downloadBin`。
 - **产物**：对应 Service/Controller + 单测（下载类用 mock 字节流断言落盘）。
 - **成功标准**：单测全绿；`downloadFile` 集成测试可下载已录制 mp4。
-- **状态**：未开始
+- **状态**：✅ 已完成（批次C/H 接入，7测试绿）
 
 ### Stage 4：多屏拼接 + WebRTC + ONVIF + 鉴权（批次 D、E、F、G、I）
 - **目标**：补齐剩余 P2 接口，新增 `doApiJson` body 提交能力与 `StackReq` 实体，`login` 的 MD5 digest 计算。
 - **产物**：批次 D/E/F/G/I 全部接口 + 单测（WebRTC 用 mock SDP 文本，stack 用 mock body 提交）。
 - **成功标准**：单测全绿；`getApiList` 实际返回的接口名与本库已接入常量做交叉核对（新增一个 `ApiCoverageTest` 自动比对）。
-- **状态**：未开始
+- **状态**：✅ 已完成（批次D/E/F/G/I + doApiJson/doApiText/doDelete，32测试绿）
 
 ### Stage 5：覆盖率校验 + 文档收尾
 - **目标**：跑 JaCoCo 覆盖率；新增 `ApiCoverageTest` 断言「文档列出的接口 100% 有对应常量」；更新 README/CLAUDE.md 接口清单。
 - **产物**：`mvn test jacoco:report`；覆盖率报告；本方案勾选完成。
 - **成功标准**：`ZlmRestService` 行覆盖率 ≥ 80%；`ApiCoverageTest` 绿。
-- **状态**：未开始
+- **状态**：✅ 已完成（ApiCoverageTest绿；ZlmRestService行覆盖率92.5%≥80%）
+
+### Stage 6：并发安全 / 高并发实时性 / 异常处理增强（详见 §9）
+- **目标**：在接口全部接入后，修复现有热路径的并发与可靠性缺陷。**不裁剪任何接口，本 Stage 不动 API 范围，只增强既有实现。**
+- **产物**：见 §9 各小节的「修正」与「测试」列；新增 `zlm.http.connect-timeout-ms` / `read-timeout-ms`、`zlm.node.cache-ttl-ms`、`zlm.node.health-check` 配置项。
+- **成功标准**：多线程压测无 `IndexOutOfBoundsException`；timeout 生效（mock 慢响应在阈值内返回失败而非永久阻塞）；部分节点故障时 failover 单测全绿。
+- **状态**：✅ 部分完成。已修复并各带 TDD 测试：§9.1#1 RoundRobin 整数溢出、§9.1#2 重复 serverId 崩溃 + nodeMap 改用 ConcurrentHashMap merge、§9.1#3 ThreadLocalRandom、§9.2#4 一致性哈希环缓存（按节点指纹失效）、§9.3#7 选点 null 优雅降级（原 NPE 已修，`testLoadBalancerReturnsNull` 解除 @Ignore 并通过）。§9.2#6 经核实 `HttpUtils` 已有有限默认超时（CONNECT=10s/RESPONSE=30s/SOCKET=100s）且客户端在静态块构建、无法从 starter 重建，故未引入「会落空」的配置项（原评审「无限阻塞」结论予以修正）。未做（留后续、范围更大）：§9.2#5 NodeSupplier TTL 缓存、§9.3#8 健康检查、§9.3#9 Hook 线程池拒绝策略评估。
+
+> **优先级提示**：§9 的 P0 项（轮询整数溢出、HTTP 超时、选点失败 failover）是**真实生产隐患**，实现顺序上建议紧跟 Stage 1 完成后立即穿插修复，不必等接口全部接入——但它们的归属范围仍记在 Stage 6，以免与「接口完整接入」的主线交付混淆。
+
+---
+
+## 9. 并发安全 / 高并发实时性 / 异常处理增强
+
+> 以下问题均为**对照现有代码核实的真实缺陷**（非臆测），与「接口完整接入」并行推进，不削减接口范围。每条给出「定位 → 问题 → 修正 → 测试」。
+
+### 9.1 并发安全
+
+| # | 定位 | 问题 | 修正 | 测试 | 优先级 |
+|---|------|------|------|------|--------|
+| 1 | `RoundRobinLoadBalancer#selectNode` `sequence.getAndIncrement() % size` | `AtomicInteger` 累加越过 `Integer.MAX_VALUE` 翻负 → 负 index → `IndexOutOfBoundsException`（高并发持续运行必现） | `(sequence.getAndIncrement() & Integer.MAX_VALUE) % size` | 多线程把 `sequence` 预置到接近 MAX_VALUE，并发 selectNode 断言无越界 | **P0** |
+| 2 | `ZlmProperties` `public static Map/List` + `afterPropertiesSet` 整体替换引用 | ① public static 可变字段无封装；② `Collectors.toMap` 默认返回非并发 `HashMap`，丢失 `ConcurrentHashMap` 语义；③ 重复 `serverId` 抛 `IllegalStateException` 启动即崩 | 字段改 `private`，提供受控的 `updateNodes()`；`toMap` 显式指定 merge 函数 + `ConcurrentHashMap::new`；重复 key 记日志取后者 | 重复 serverId 配置用例断言不崩、取最后一个；并发读 + 更新无 `ConcurrentModification` | **P1** |
+| 3 | `WeightRoundRobinLoadBalancer` / `WeightRandomLoadBalancer` 共享 `java.util.Random` | 线程安全但高并发下 CAS 自旋成热点 | 改 `ThreadLocalRandom.current()` | 基准对比（可选）；功能等价单测 | P2 |
+
+### 9.2 高并发实时性
+
+| # | 定位 | 问题 | 修正 | 测试 | 优先级 |
+|---|------|------|------|------|--------|
+| 4 | `ConsistentHashingLoadBalancer#selectNode` 每次 `buildHashRing` | 每请求全量重建 TreeMap（O(节点×weight×10)），既慢又破坏一致性哈希「同 key 稳定落点」的核心价值 | 缓存哈希环，仅在节点列表「指纹」变化时重建（指纹 = 排序后 serverId+weight 的 hash） | 同 key 多次 selectNode 落点稳定；节点变更后环重建 | **P1** |
+| 5 | 所有 5 个均衡器 `selectNode` 内直调 `nodeSupplier.getNodes()` | CLAUDE.md 推荐 DB/注册中心版 `NodeSupplier` → **每个媒体请求打一次 DB**，无缓存 | 在 `NodeService` 或包装层加 TTL 缓存（默认 `zlm.node.cache-ttl-ms=1000`），变更失效 | mock 慢 `NodeSupplier`，断言 TTL 内只调一次 | **P1** |
+| 6 | `ZlmRestService#doApi` / `doApiImg` 调 `HttpUtils` | **全代码库零 connect/socket timeout**：一个慢/挂节点无限阻塞调用线程 → 高并发耗尽 web 线程池 → 雪崩 | 暴露 `zlm.http.connect-timeout-ms` / `read-timeout-ms`，经 `HttpUtils` 的超时入口或自定义 RequestConfig 透传 | `mockStatic(HttpUtils)` 模拟超时抛异常，断言被捕获并在阈值内返回失败 | **P0** |
+
+> 注：若 `HttpUtils.doPostHander` 不支持传超时，需在 §3 的 `doApiJson` 改造同批，封装一个带 `RequestConfig` 的调用入口（不破坏现有 `doApi` 签名）。
+
+### 9.3 异常处理
+
+| # | 定位 | 问题 | 修正 | 测试 | 优先级 |
+|---|------|------|------|------|--------|
+| 7 | 均衡器 `getCurrentNodes` catch 返回 `null` → `NodeServiceImpl` `Assert.notNull` 抛 `IllegalArgumentException` | 单点抖动无重试、无 failover、无坏节点摘除，直接对外暴露 500 | 选点失败重试下一可用节点；连续失败的节点临时摘除（熔断窗口） | mock 部分节点抛异常，断言 failover 到健康节点 | **P0** |
+| 8 | 无任何健康检查 | `selectNode` 可能返回已宕机节点 | 可选：定时 `getVersion` 探活，维护节点健康状态（`zlm.node.health-check.enabled`） | 健康状态机单测；探活失败标记 unhealthy | P2 |
+| 9 | `ZlmThreadPoolConfig` `CallerRunsPolicy`（queue 100 / max 30） | 打满后接收 Hook 的 Web 线程同步跑业务 → Hook 响应变慢 → ZLM 侧 Hook 超时甚至阻塞推拉流 | 评估队列容量与拒绝策略；高频 Hook 场景考虑独立线程池 + 可配置参数 | 压测 Hook 端点，观测拒绝行为与延迟 | P2 |
+
+### 9.4 验收补充（并入 §7 DoD）
+
+- [ ] 轮询均衡器多线程压测（如 1000 线程 × 10 万次）无 `IndexOutOfBoundsException`
+- [ ] HTTP 超时配置生效：mock 慢响应在 `read-timeout-ms` 内返回失败而非永久阻塞
+- [ ] 部分节点故障时 `selectNode` 能 failover 到健康节点（单测覆盖）
+- [ ] 重复 `serverId` 配置不导致启动失败
+- [ ] 一致性哈希同 key 落点稳定（缓存生效后）
 
 ---
 
 ## 6. 接口覆盖自动校验（防回归）
 
-新增 `ApiCoverageTest`，从 `ApiConstants` 反射收集所有 `API_INDEX + "/xxx"` 常量，与一份「文档接口清单」常量数组比对，确保新增文档接口时不会漏接：
+新增 `ApiCoverageTest`，从 `ApiConstants` 反射收集所有 `API_INDEX + "/xxx"` 常量，与一份「文档接口清单」常量数组比对，确保新增文档接口时不会漏接。
+
+> **口径对齐（重要）**：`ApiConstants` 常量存的是**全路径** `/index/api/listStreamProxy`，而 `documented` 集合是**短名** `listStreamProxy`。比对前必须把常量值 `substring(API_INDEX.length() + 1)` 剥掉 `/index/api/` 前缀再 removeAll，否则永远判定为「全部缺失」。`stack/start` 等带子路径的短名同理保留。
 
 ```java
 @Test
 public void allDocumentedApisHaveConstant() {
-    Set<String> implemented = collectConstantPaths(ApiConstants.class); // 反射
+    // 反射收集 ApiConstants 的 String 常量值，剥掉 API_INDEX 前缀转为短名
+    Set<String> implemented = collectConstantShortNames(ApiConstants.class);
     Set<String> documented = Set.of(
         "getApiList","stack/start","stack/reset","stack/stop","listStreamProxy",
         "listStreamPusherProxy","listFFmpegSource","listRtpSender","startRecordTask",
         "deleteSnapDirectory","startSendRtpTalk","addWebrtcRoomKeeper","delWebrtcRoomKeeper",
         "listWebrtcRoomKeepers","listWebrtcRooms","getWebrtcProxyPlayerInfo","webrtc",
         "whip","whep","delete_webrtc","searchOnvifDevice","getStreamUrl","downloadFile",
-        "downloadBin","login","logout","addProbe" /* ...全量 */);
+        "downloadBin","login","logout","addProbe" /* ...全量 26 项 */);
     Set<String> missing = new TreeSet<>(documented);
     missing.removeAll(implemented);
     assertTrue("以下文档接口尚未接入: " + missing, missing.isEmpty());
+}
+
+/** 反射读取 public static String 常量，剥掉 API_INDEX 前缀 */
+private static Set<String> collectConstantShortNames(Class<?> clazz) {
+    String prefix = ApiConstants.API_INDEX + "/";   // "/index/api/"
+    Set<String> result = new TreeSet<>();
+    for (Field f : clazz.getDeclaredFields()) {
+        if (Modifier.isStatic(f.getModifiers()) && f.getType() == String.class) {
+            try {
+                String v = (String) f.get(null);
+                if (v != null && v.startsWith(prefix)) {
+                    result.add(v.substring(prefix.length()));
+                }
+            } catch (IllegalAccessException ignored) {}
+        }
+    }
+    return result;
 }
 ```
 
