@@ -354,4 +354,22 @@ public class ZlmHookController {
             @Parameter(description = "MP4录制参数") @RequestBody OnRecordMp4HookParam param, HttpServletRequest request) {
         return handleAsyncHookEventWithRequest("onRecordMp4", param, request, zlmHookService::onRecordMp4);
     }
+
+    /**
+     * shell登录鉴权，ZLMediaKit提供简单的telnet调试方式
+     * 使用telnet 127.0.0.1 9000能进入MediaServer进程的shell界面
+     *
+     * @param param   shell登录参数
+     * @param request HTTP请求
+     * @return 鉴权结果，code为0代表允许登录telnet
+     */
+    @ResponseBody
+    @PostMapping(value = "/`on_shell_login`", produces = "application/json;charset=UTF-8")
+    @Operation(summary = "Shell登录鉴权事件", description = "telnet终端登录鉴权，ZLMediaKit提供简单的telnet调试方式")
+    @ApiResponse(responseCode = "200", description = "鉴权成功",
+            content = @Content(schema = @Schema(implementation = HookResult.class)))
+    public HookResult onShellLogin(
+            @Parameter(description = "Shell登录鉴权参数") @RequestBody OnShellLoginHookParam param, HttpServletRequest request) {
+        return handleSyncHookEventWithRequest("onShellLogin", param, request, zlmHookService::onShellLogin);
+    }
 }

@@ -5,6 +5,7 @@ import com.alibaba.fastjson2.TypeReference;
 import com.luna.common.check.Assert;
 import com.luna.common.file.FileTools;
 import com.luna.common.net.HttpUtils;
+import io.github.lunasaw.zlm.config.ZlmNode;
 import io.github.lunasaw.zlm.constant.ApiConstants;
 import io.github.lunasaw.zlm.entity.*;
 import io.github.lunasaw.zlm.entity.req.MediaReq;
@@ -328,6 +329,7 @@ public class ZlmRestService {
         String vhost = mediaReq.getVhost();
         String app = mediaReq.getApp();
         String stream = mediaReq.getStream();
+
 
         // 获取主机地址
         String baseHost = host.replace("http://", "").replace("https://", "");

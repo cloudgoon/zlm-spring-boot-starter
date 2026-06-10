@@ -90,4 +90,11 @@ public abstract class AbstractZlmHookService implements ZlmHookService {
     public void onProxyAdded(StreamProxyItem param, StreamKey streamKey, HttpServletRequest request) {
 
     }
+
+    @Override
+    public HookResult onShellLogin(OnShellLoginHookParam param, HttpServletRequest request) {
+        // 默认允许shell登录，子类可以重写此方法实现自定义鉴权逻辑
+        log.info("Shell login attempt from {}:{} with user: {}", param.getIp(), param.getPort(), param.getUserName());
+        return HookResult.SUCCESS();
+    }
 }

@@ -47,4 +47,6 @@ public interface ZlmHookService {
     void onRecordMp4(OnRecordMp4HookParam param, HttpServletRequest request);
 
     void onProxyAdded(StreamProxyItem param, StreamKey streamKey, HttpServletRequest request);
+
+    HookResult onShellLogin(OnShellLoginHookParam param, HttpServletRequest request);
 }
