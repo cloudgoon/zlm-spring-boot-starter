@@ -7,3 +7,10 @@ zlm:
       enabled: true
       hook-enabled: true
   balance: round_robin
+  # E2E 推拉流测试配置（仅本地联调用；无 ZLM 环境时测试自动 assumeTrue 跳过）
+  test:
+    ffmpeg-path: /usr/local/bin/ffmpeg
+    files-dir: ../src/main/resources/files
+    e2e-enabled: false
+    rtsp-push-url: rtsp://127.0.0.1:554
+    rtmp-push-url: rtmp://127.0.0.1:1935

@@ -13,6 +13,12 @@ import java.util.Map;
 public class StreamFfmpegItem {
 
     /**
+     * 代理唯一key（listFFmpegSource 返回）
+     */
+    @JSONField(name = "key")
+    private String  key;
+
+    /**
      * FFmpeg拉流地址,支持任意协议或格式(只要FFmpeg支持即可)
      */
     @JSONField(name = "src_url")

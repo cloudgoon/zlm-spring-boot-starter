@@ -3,6 +3,7 @@ package io.github.lunasaw.zlm.entity.req;
 import java.util.HashMap;
 import java.util.Map;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 /**
@@ -17,7 +18,7 @@ public class MediaReq {
     /**
      * 筛选协议，例如 rtsp或rtmp
      */
-    public String schema = "rtsp";
+    public String schema;
     /**
      * 筛选虚拟主机，例如__defaultVhost__
      */
@@ -25,10 +26,12 @@ public class MediaReq {
     /**
      * 筛选应用名，例如 live
      */
+    @NotBlank
     public String app;
     /**
      * 筛选流id，例如 test
      */
+    @NotBlank
     public String stream;
 
     public Map<String, String> toMap() {

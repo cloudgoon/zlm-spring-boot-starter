@@ -3,15 +3,15 @@ package io.github.lunasaw.zlm.api.controller;
 import com.luna.common.check.Assert;
 import io.github.lunasaw.zlm.api.ZlmRestService;
 import io.github.lunasaw.zlm.config.ZlmNode;
-import io.github.lunasaw.zlm.config.ZlmProperties;
 import io.github.lunasaw.zlm.entity.*;
 import io.github.lunasaw.zlm.entity.req.CloseStreamsReq;
 import io.github.lunasaw.zlm.entity.req.MediaReq;
 import io.github.lunasaw.zlm.entity.req.RecordReq;
+import io.github.lunasaw.zlm.entity.req.RecordTaskReq;
 import io.github.lunasaw.zlm.entity.req.SnapshotReq;
+import io.github.lunasaw.zlm.entity.req.StackReq;
 import io.github.lunasaw.zlm.entity.rtp.*;
 import io.github.lunasaw.zlm.hook.service.ZlmHookService;
-import io.github.lunasaw.zlm.node.LoadBalancer;
 import io.github.lunasaw.zlm.node.NodeSupplier;
 import io.github.lunasaw.zlm.node.service.NodeService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,9 +24,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.io.ResourceLoader;
+import org.springframework.util.ResourceUtils;
 import org.springframework.web.bind.annotation.*;
 
-
+import java.io.File;
 import java.util.List;
 import java.util.Map;
 
@@ -54,7 +56,6 @@ public class ZlmApiController {
 
     @Autowired
     private ZlmHookService zlmHookService;
-
     /**
      * 获取可用的 ZLM 节点
      * 支持通过请求头 X-Node-Key 指定节点
@@ -439,6 +440,44 @@ public class ZlmApiController {
         return ZlmRestService.delFFmpegSource(node.getHost(), node.getSecret(), key);
     }
 
+    /**
+     * 获取FFmpeg拉流代理列表
+     */
+    @GetMapping("/ffmpeg/list")
+    @Operation(summary = "获取FFmpeg拉流代理列表", description = "获取当前所有FFmpeg拉流代理")
+    @ApiResponse(responseCode = "200", description = "获取成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<List<StreamFfmpegItem>> listFFmpegSource() {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.listFFmpegSource(node.getHost(), node.getSecret());
+    }
+
+    // ==================== 代理流列表接口 ====================
+
+    /**
+     * 获取拉流代理列表
+     */
+    @GetMapping("/proxy/list")
+    @Operation(summary = "获取拉流代理列表", description = "获取当前所有拉流代理")
+    @ApiResponse(responseCode = "200", description = "获取成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<List<StreamProxyItem>> listStreamProxy() {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.listStreamProxy(node.getHost(), node.getSecret());
+    }
+
+    /**
+     * 获取推流代理列表
+     */
+    @GetMapping("/pusher/list")
+    @Operation(summary = "获取推流代理列表", description = "获取当前所有推流代理")
+    @ApiResponse(responseCode = "200", description = "获取成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<List<StreamPusherItem>> listStreamPusherProxy() {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.listStreamPusherProxy(node.getHost(), node.getSecret());
+    }
+
     // ==================== 录制管理接口 ====================
 
     /**
@@ -545,6 +584,19 @@ public class ZlmApiController {
         return ZlmRestService.getMp4RecordSummary(node.getHost(), node.getSecret(), params);
     }
 
+    /**
+     * 添加录制任务（支持回溯录制）
+     */
+    @PostMapping("/record/task/start")
+    @Operation(summary = "添加录制任务", description = "添加录制任务，支持回溯录制（back_ms）与后续录制（forward_ms）")
+    @ApiResponse(responseCode = "200", description = "添加成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> startRecordTask(
+            @Parameter(description = "录制任务配置") @RequestBody RecordTaskReq recordTaskReq) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.startRecordTask(node.getHost(), node.getSecret(), recordTaskReq);
+    }
+
     // ==================== 截图接口 ====================
 
     /**
@@ -558,6 +610,157 @@ public class ZlmApiController {
             @Parameter(description = "截图配置") @RequestBody SnapshotReq snapshotReq) {
         ZlmNode node = getAvailableNode();
         return ZlmRestService.getSnap(node.getHost(), node.getSecret(), snapshotReq);
+    }
+
+    /**
+     * 获取截图URL - 返回可访问的URL路径
+     */
+    @PostMapping("/snapshot-url")
+    @Operation(summary = "获取截图URL", description = "获取指定媒体流的截图并返回可访问的URL")
+    @ApiResponse(responseCode = "200", description = "截图URL获取成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> getSnapUrl(
+            @Parameter(description = "截图配置") @RequestBody SnapshotReq snapshotReq) {
+
+        try {
+            ZlmNode node = getAvailableNode();
+
+            // 生成唯一的文件名
+            String timestamp = String.valueOf(System.currentTimeMillis());
+            String fileName = "snapshot_" + timestamp + ".jpg";
+
+            // 使用 Spring Boot 的类路径处理静态资源
+            String snapshotDir = "snapshots";
+            File staticResourceDir = getStaticResourceDirectory();
+            File snapshotFolder = new File(staticResourceDir, snapshotDir);
+
+            // 确保静态资源目录存在
+            if (!snapshotFolder.exists()) {
+                boolean created = snapshotFolder.mkdirs();
+                if (!created) {
+                    throw new RuntimeException("无法创建截图目录: " + snapshotFolder.getAbsolutePath());
+                }
+            }
+
+            // 设置完整的文件保存路径
+            String fullSavePath = new File(snapshotFolder, fileName).getAbsolutePath();
+            snapshotReq.setSavePath(fullSavePath);
+
+            // 调用ZLM API获取截图
+            String filePath = ZlmRestService.getSnap(node.getHost(), node.getSecret(), snapshotReq);
+
+            if (filePath != null && !filePath.trim().isEmpty()) {
+                // 验证文件是否实际创建
+                File savedFile = new File(filePath);
+                if (savedFile.exists() && savedFile.length() > 0) {
+                    // 构建HTTP访问URL
+                    String baseUrl = getBaseUrl();
+                    String accessUrl = baseUrl + "/" + snapshotDir + "/" + fileName;
+
+                    ServerResponse<String> response = new ServerResponse<>();
+                    response.setCode(0);
+                    response.setMsg("截图获取成功");
+                    response.setData(accessUrl);
+                    return response;
+                } else {
+                    ServerResponse<String> response = new ServerResponse<>();
+                    response.setCode(-1);
+                    response.setMsg("截图文件生成失败");
+                    return response;
+                }
+            } else {
+                ServerResponse<String> response = new ServerResponse<>();
+                response.setCode(-1);
+                response.setMsg("ZLM API调用失败");
+                return response;
+            }
+
+        } catch (Exception e) {
+            log.error("获取截图URL失败: {}", e.getMessage(), e);
+            ServerResponse<String> response = new ServerResponse<>();
+            response.setCode(-1);
+            response.setMsg("截图获取失败: " + e.getMessage());
+            return response;
+        }
+    }
+
+    /**
+     * 获取静态资源目录
+     * 支持开发环境和生产环境（JAR包）
+     */
+    private File getStaticResourceDirectory() throws Exception {
+        // 首先尝试获取 Spring Boot 应用的静态资源目录
+        try {
+            File file = ResourceUtils.getFile("classpath:static");
+            if (file.exists() && file.isDirectory()) {
+                log.info("使用类路径静态资源目录: {}", file.getAbsolutePath());
+                return file;
+            }
+        } catch (Exception e) {
+            log.debug("无法获取类路径静态资源目录: {}", e.getMessage());
+        }
+
+        // 使用临时目录（配合 ZlmWebConfig 的资源映射）
+        String tempDir = System.getProperty("java.io.tmpdir");
+        File appTempDir = new File(tempDir, "zlm-snapshots");
+        if (!appTempDir.exists()) {
+            boolean created = appTempDir.mkdirs();
+            if (!created) {
+                throw new RuntimeException("无法创建临时目录: " + appTempDir.getAbsolutePath());
+            }
+        }
+        log.info("使用临时目录存储截图: {}", appTempDir.getAbsolutePath());
+        return appTempDir;
+    }
+
+    /**
+     * 获取基础URL
+     */
+    private String getBaseUrl() {
+        // 从请求中获取基础URL
+        String scheme = request.getScheme();
+        String serverName = request.getServerName();
+        int serverPort = request.getServerPort();
+
+        StringBuilder baseUrl = new StringBuilder();
+        baseUrl.append(scheme).append("://").append(serverName);
+
+        // 只有在非标准端口时才添加端口号
+        if ((scheme.equals("http") && serverPort != 80) ||
+                (scheme.equals("https") && serverPort != 443)) {
+            baseUrl.append(":").append(serverPort);
+        }
+
+        return baseUrl.toString();
+    }
+
+    /**
+     * 删除截图文件夹
+     */
+    @PostMapping("/snapshot/delete")
+    @Operation(summary = "删除截图文件夹", description = "删除指定媒体流的截图文件夹")
+    @ApiResponse(responseCode = "200", description = "删除成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> deleteSnapDirectory(
+            @Parameter(description = "媒体流参数") @RequestBody MediaReq mediaReq) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.deleteSnapDirectory(node.getHost(), node.getSecret(), mediaReq);
+    }
+
+    // ==================== 探针接口 ====================
+
+    /**
+     * 添加探针
+     */
+    @PostMapping("/probe/add")
+    @Operation(summary = "添加探针", description = "探测指定流的编码信息，probeMs 为探针时长（毫秒）")
+    @ApiResponse(responseCode = "200", description = "添加成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> addProbe(
+            @Parameter(description = "媒体流参数") @RequestBody MediaReq mediaReq,
+            @Parameter(description = "探针时长(毫秒)") @RequestParam("probeMs") int probeMs) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.addProbe(node.getHost(), node.getSecret(), mediaReq, probeMs);
     }
 
     // ==================== RTP服务器管理接口 ====================
@@ -720,6 +923,32 @@ public class ZlmApiController {
         return ZlmRestService.stopSendRtp(node.getHost(), node.getSecret(), req);
     }
 
+    /**
+     * 获取rtp发送列表
+     */
+    @PostMapping("/rtp/sender/list")
+    @Operation(summary = "获取RTP发送列表", description = "获取指定流的所有RTP发送ssrc列表")
+    @ApiResponse(responseCode = "200", description = "获取成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<List<String>> listRtpSender(
+            @Parameter(description = "媒体流参数") @RequestBody MediaReq mediaReq) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.listRtpSender(node.getHost(), node.getSecret(), mediaReq);
+    }
+
+    /**
+     * RTP 双向对讲推流
+     */
+    @PostMapping("/rtp/send/start-talk")
+    @Operation(summary = "RTP双向对讲推流", description = "启动RTP双向对讲推流（startSendRtpTalk）")
+    @ApiResponse(responseCode = "200", description = "启动成功",
+            content = @Content(schema = @Schema(implementation = StartSendRtpResult.class)))
+    public StartSendRtpResult startSendRtpTalk(
+            @Parameter(description = "RTP对讲配置") @RequestBody StartSendRtpTalkReq req) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.startSendRtpTalk(node.getHost(), node.getSecret(), req);
+    }
+
     // ==================== MP4文件管理接口 ====================
 
     /**
@@ -774,6 +1003,266 @@ public class ZlmApiController {
             @Parameter(description = "查询参数") @RequestBody Map<String, String> params) {
         ZlmNode node = getAvailableNode();
         return ZlmRestService.getStorageSpace(node.getHost(), node.getSecret(), params);
+    }
+
+    // ==================== 文件下载接口 ====================
+
+    /**
+     * 下载文件（下载到服务器临时目录，返回落盘绝对路径）
+     */
+    @GetMapping("/download/file")
+    @Operation(summary = "下载文件", description = "按文件绝对路径从ZLM下载文件到本地临时目录，返回落盘路径")
+    @ApiResponse(responseCode = "200", description = "下载成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> downloadFile(
+            @Parameter(description = "文件绝对路径") @RequestParam("filePath") String filePath,
+            @Parameter(description = "保存文件名(可选)") @RequestParam(value = "saveName", required = false) String saveName) {
+        ZlmNode node = getAvailableNode();
+        String name = (saveName != null && !saveName.isEmpty()) ? saveName : new File(filePath).getName();
+        File target = new File(System.getProperty("java.io.tmpdir"), "zlm-download-" + System.currentTimeMillis() + "-" + name);
+        String path = ZlmRestService.downloadFile(node.getHost(), node.getSecret(), filePath, saveName, target);
+        return ServerResponse.success(path);
+    }
+
+    /**
+     * 下载二进制（如配置文件 downloadBin，下载到服务器临时目录）
+     */
+    @GetMapping("/download/bin")
+    @Operation(summary = "下载二进制", description = "从ZLM下载二进制(如配置文件)到本地临时目录，返回落盘路径")
+    @ApiResponse(responseCode = "200", description = "下载成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> downloadBin() {
+        ZlmNode node = getAvailableNode();
+        File target = new File(System.getProperty("java.io.tmpdir"), "zlm-download-bin-" + System.currentTimeMillis());
+        String path = ZlmRestService.downloadBin(node.getHost(), node.getSecret(), target);
+        return ServerResponse.success(path);
+    }
+
+    // ==================== 多屏拼接接口 ====================
+
+    /**
+     * 多屏拼接 - 开始
+     */
+    @PostMapping("/stack/start")
+    @Operation(summary = "多屏拼接-开始", description = "启动多屏拼接（POST JSON body）")
+    @ApiResponse(responseCode = "200", description = "启动成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> stackStart(
+            @Parameter(description = "拼接配置") @RequestBody StackReq req) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.stackStart(node.getHost(), node.getSecret(), req);
+    }
+
+    /**
+     * 多屏拼接 - 重置
+     */
+    @PostMapping("/stack/reset")
+    @Operation(summary = "多屏拼接-重置", description = "重置多屏拼接（POST JSON body）")
+    @ApiResponse(responseCode = "200", description = "重置成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> stackReset(
+            @Parameter(description = "拼接配置") @RequestBody StackReq req) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.stackReset(node.getHost(), node.getSecret(), req);
+    }
+
+    /**
+     * 多屏拼接 - 停止
+     */
+    @DeleteMapping("/stack/{id}")
+    @Operation(summary = "多屏拼接-停止", description = "根据拼接id停止多屏拼接")
+    @ApiResponse(responseCode = "200", description = "停止成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> stackStop(
+            @Parameter(description = "拼接id") @PathVariable("id") String id) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.stackStop(node.getHost(), node.getSecret(), id);
+    }
+
+    // ==================== WebRTC 房间管理接口 ====================
+
+    /**
+     * WebRTC 注册到信令服务器
+     */
+    @PostMapping("/webrtc/room-keeper/add")
+    @Operation(summary = "WebRTC注册到信令服务器", description = "注册WebRTC房间守护者(server_host/server_port/room_id)")
+    @ApiResponse(responseCode = "200", description = "注册成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> addWebrtcRoomKeeper(
+            @Parameter(description = "注册参数") @RequestBody Map<String, String> params) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.addWebrtcRoomKeeper(node.getHost(), node.getSecret(), params);
+    }
+
+    /**
+     * WebRTC 从信令服务器注销
+     */
+    @DeleteMapping("/webrtc/room-keeper/{roomKey}")
+    @Operation(summary = "WebRTC从信令服务器注销", description = "根据room_key注销WebRTC房间守护者")
+    @ApiResponse(responseCode = "200", description = "注销成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> delWebrtcRoomKeeper(
+            @Parameter(description = "room_key") @PathVariable("roomKey") String roomKey) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.delWebrtcRoomKeeper(node.getHost(), node.getSecret(), roomKey);
+    }
+
+    /**
+     * WebRTC 房间守护者列表
+     */
+    @GetMapping("/webrtc/room-keeper/list")
+    @Operation(summary = "WebRTC房间守护者列表", description = "获取所有WebRTC房间守护者")
+    @ApiResponse(responseCode = "200", description = "获取成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<List<String>> listWebrtcRoomKeepers() {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.listWebrtcRoomKeepers(node.getHost(), node.getSecret());
+    }
+
+    /**
+     * WebRTC 房间列表
+     */
+    @GetMapping("/webrtc/rooms")
+    @Operation(summary = "WebRTC房间列表", description = "获取所有WebRTC房间")
+    @ApiResponse(responseCode = "200", description = "获取成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<List<String>> listWebrtcRooms() {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.listWebrtcRooms(node.getHost(), node.getSecret());
+    }
+
+    /**
+     * WebRTC 代理播放器信息
+     */
+    @GetMapping("/webrtc/proxy-player/{key}")
+    @Operation(summary = "WebRTC代理播放器信息", description = "根据key获取WebRTC代理播放器信息")
+    @ApiResponse(responseCode = "200", description = "获取成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> getWebrtcProxyPlayerInfo(
+            @Parameter(description = "key") @PathVariable("key") String key) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.getWebrtcProxyPlayerInfo(node.getHost(), node.getSecret(), key);
+    }
+
+    // ==================== WebRTC 交互接口（SDP 文本）====================
+
+    /**
+     * WebRTC 交互（body 为 SDP offer，返回 SDP answer）
+     */
+    @PostMapping(value = "/webrtc", consumes = "text/plain", produces = "text/plain")
+    @Operation(summary = "WebRTC交互", description = "WebRTC交互，body为SDP offer，返回SDP answer")
+    public String webrtc(
+            @Parameter(description = "type:play/push/echo") @RequestParam("type") String type,
+            @Parameter(description = "应用名") @RequestParam("app") String app,
+            @Parameter(description = "流id") @RequestParam("stream") String stream,
+            @RequestBody String sdpOffer) {
+        ZlmNode node = getAvailableNode();
+        Map<String, String> query = new java.util.HashMap<>();
+        query.put("type", type);
+        query.put("app", app);
+        query.put("stream", stream);
+        return ZlmRestService.webrtc(node.getHost(), node.getSecret(), query, sdpOffer);
+    }
+
+    /**
+     * WebRTC WHIP 推流（body 为 SDP offer）
+     */
+    @PostMapping(value = "/webrtc/whip", consumes = "application/sdp", produces = "application/sdp")
+    @Operation(summary = "WebRTC WHIP推流", description = "WHIP标准推流，body为SDP offer")
+    public String whip(
+            @Parameter(description = "应用名") @RequestParam("app") String app,
+            @Parameter(description = "流id") @RequestParam("stream") String stream,
+            @RequestBody String sdpOffer) {
+        ZlmNode node = getAvailableNode();
+        Map<String, String> query = new java.util.HashMap<>();
+        query.put("app", app);
+        query.put("stream", stream);
+        return ZlmRestService.whip(node.getHost(), node.getSecret(), query, sdpOffer);
+    }
+
+    /**
+     * WebRTC WHEP 播放（body 为 SDP offer）
+     */
+    @PostMapping(value = "/webrtc/whep", consumes = "application/sdp", produces = "application/sdp")
+    @Operation(summary = "WebRTC WHEP播放", description = "WHEP标准播放，body为SDP offer")
+    public String whep(
+            @Parameter(description = "应用名") @RequestParam("app") String app,
+            @Parameter(description = "流id") @RequestParam("stream") String stream,
+            @RequestBody String sdpOffer) {
+        ZlmNode node = getAvailableNode();
+        Map<String, String> query = new java.util.HashMap<>();
+        query.put("app", app);
+        query.put("stream", stream);
+        return ZlmRestService.whep(node.getHost(), node.getSecret(), query, sdpOffer);
+    }
+
+    /**
+     * 删除 WebRTC 连接
+     */
+    @DeleteMapping("/webrtc/{id}")
+    @Operation(summary = "删除WebRTC连接", description = "根据id和token删除WebRTC连接")
+    @ApiResponse(responseCode = "200", description = "删除成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> deleteWebrtc(
+            @Parameter(description = "WebRTC连接id") @PathVariable("id") String id,
+            @Parameter(description = "删除token") @RequestParam("token") String token) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.deleteWebrtc(node.getHost(), id, token);
+    }
+
+    // ==================== ONVIF 接口 ====================
+
+    /**
+     * 搜索 ONVIF 设备
+     */
+    @GetMapping("/onvif/search")
+    @Operation(summary = "搜索ONVIF设备", description = "在指定子网前缀下搜索ONVIF设备")
+    @ApiResponse(responseCode = "200", description = "搜索成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<List<String>> searchOnvifDevice(
+            @Parameter(description = "子网前缀，例如192.168.1") @RequestParam("subnetPrefix") String subnetPrefix) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.searchOnvifDevice(node.getHost(), node.getSecret(), subnetPrefix);
+    }
+
+    /**
+     * 获取 ONVIF 设备流地址
+     */
+    @GetMapping("/onvif/stream-url")
+    @Operation(summary = "获取ONVIF设备流地址", description = "根据ONVIF设备地址获取流地址")
+    @ApiResponse(responseCode = "200", description = "获取成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> getOnvifStreamUrl(
+            @Parameter(description = "ONVIF设备地址") @RequestParam("onvifUrl") String onvifUrl) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.getOnvifStreamUrl(node.getHost(), node.getSecret(), onvifUrl);
+    }
+
+    // ==================== 鉴权接口 ====================
+
+    /**
+     * 登录鉴权
+     */
+    @GetMapping("/auth/login")
+    @Operation(summary = "登录鉴权", description = "通过cookie计算digest登录")
+    @ApiResponse(responseCode = "200", description = "登录成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> login(
+            @Parameter(description = "cookie") @RequestParam("cookie") String cookie) {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.login(node.getHost(), node.getSecret(), cookie);
+    }
+
+    /**
+     * 注销鉴权
+     */
+    @GetMapping("/auth/logout")
+    @Operation(summary = "注销鉴权", description = "注销当前登录")
+    @ApiResponse(responseCode = "200", description = "注销成功",
+            content = @Content(schema = @Schema(implementation = ServerResponse.class)))
+    public ServerResponse<String> logout() {
+        ZlmNode node = getAvailableNode();
+        return ZlmRestService.logout(node.getHost(), node.getSecret());
     }
 
     // ==================== 指定节点操作接口 ====================

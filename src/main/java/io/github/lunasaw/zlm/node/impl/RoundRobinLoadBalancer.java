@@ -36,7 +36,8 @@ public class RoundRobinLoadBalancer implements LoadBalancer {
             return null;
         }
 
-        int index = sequence.getAndIncrement() % nodes.size();
+        // & Integer.MAX_VALUE 屏蔽符号位，避免 AtomicInteger 累加越过 MAX_VALUE 翻负后产生负索引
+        int index = (sequence.getAndIncrement() & Integer.MAX_VALUE) % nodes.size();
         return nodes.get(index);
     }
 

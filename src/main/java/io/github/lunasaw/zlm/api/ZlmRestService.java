@@ -5,14 +5,18 @@ import com.alibaba.fastjson2.TypeReference;
 import com.luna.common.check.Assert;
 import com.luna.common.file.FileTools;
 import com.luna.common.net.HttpUtils;
+import io.github.lunasaw.zlm.config.ZlmNode;
 import io.github.lunasaw.zlm.constant.ApiConstants;
 import io.github.lunasaw.zlm.entity.*;
 import io.github.lunasaw.zlm.entity.req.MediaReq;
 import io.github.lunasaw.zlm.entity.req.RecordReq;
+import io.github.lunasaw.zlm.entity.req.RecordTaskReq;
 import io.github.lunasaw.zlm.entity.req.SnapshotReq;
+import io.github.lunasaw.zlm.entity.req.StackReq;
 import io.github.lunasaw.zlm.entity.rtp.*;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hc.core5.http.ClassicHttpResponse;
+import org.springframework.util.DigestUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -329,6 +333,7 @@ public class ZlmRestService {
         String app = mediaReq.getApp();
         String stream = mediaReq.getStream();
 
+
         // 获取主机地址
         String baseHost = host.replace("http://", "").replace("https://", "");
         if (baseHost.contains(":")) {
@@ -622,6 +627,248 @@ public class ZlmRestService {
         return executeApiCall(host, secret, ApiConstants.LOAD_MP4_FILE, params, new TypeReference<ServerResponse<String>>() {});
     }
 
+    // ==================== 批次 A：列表查询补全 ====================
+
+    /**
+     * 获取拉流代理列表
+     */
+    public static ServerResponse<List<StreamProxyItem>> listStreamProxy(String host, String secret) {
+        return executeApiCall(host, secret, ApiConstants.LIST_STREAM_PROXY, new HashMap<>(),
+                new TypeReference<ServerResponse<List<StreamProxyItem>>>() {});
+    }
+
+    /**
+     * 获取推流代理列表
+     */
+    public static ServerResponse<List<StreamPusherItem>> listStreamPusherProxy(String host, String secret) {
+        return executeApiCall(host, secret, ApiConstants.LIST_STREAM_PUSHER_PROXY, new HashMap<>(),
+                new TypeReference<ServerResponse<List<StreamPusherItem>>>() {});
+    }
+
+    /**
+     * 获取FFmpeg拉流代理列表
+     */
+    public static ServerResponse<List<StreamFfmpegItem>> listFFmpegSource(String host, String secret) {
+        return executeApiCall(host, secret, ApiConstants.LIST_FFMPEG_SOURCE, new HashMap<>(),
+                new TypeReference<ServerResponse<List<StreamFfmpegItem>>>() {});
+    }
+
+    /**
+     * 获取rtp发送列表（指定流的所有 rtp 发送 ssrc）
+     */
+    public static ServerResponse<List<String>> listRtpSender(String host, String secret, MediaReq mediaReq) {
+        return executeApiCall(host, secret, ApiConstants.LIST_RTP_SENDER, mediaReq,
+                new TypeReference<ServerResponse<List<String>>>() {}, MediaReq::toMap);
+    }
+
+    // ==================== 批次 B：录制 / 截图补全 ====================
+
+    /**
+     * 添加录制任务（支持回溯录制 back_ms 与后续录制 forward_ms）
+     */
+    public static ServerResponse<String> startRecordTask(String host, String secret, RecordTaskReq recordTaskReq) {
+        return executeApiCall(host, secret, ApiConstants.START_RECORD_TASK, recordTaskReq,
+                new TypeReference<ServerResponse<String>>() {}, RecordTaskReq::toMap);
+    }
+
+    /**
+     * 删除截图文件夹
+     */
+    public static ServerResponse<String> deleteSnapDirectory(String host, String secret, MediaReq mediaReq) {
+        return executeApiCall(host, secret, ApiConstants.DELETE_SNAP_DIRECTORY, mediaReq,
+                new TypeReference<ServerResponse<String>>() {}, MediaReq::toMap);
+    }
+
+    /**
+     * 删除截图文件夹
+     */
+    public static ServerResponse<String> deleteSnapDirectory(String host, String secret, Map<String, String> params) {
+        return executeApiCall(host, secret, ApiConstants.DELETE_SNAP_DIRECTORY, params, new TypeReference<ServerResponse<String>>() {});
+    }
+
+    // ==================== 批次 J：探针 ====================
+
+    /**
+     * 添加探针（探测指定流的编码信息，probeMs 为探针时长，单位毫秒）
+     */
+    public static ServerResponse<String> addProbe(String host, String secret, MediaReq mediaReq, int probeMs) {
+        Map<String, String> params = mediaReq.toMap();
+        params.put("probe_ms", String.valueOf(probeMs));
+        return executeApiCall(host, secret, ApiConstants.ADD_PROBE, params, new TypeReference<ServerResponse<String>>() {});
+    }
+
+    // ==================== 批次 C：RTP 双向对讲 ====================
+
+    /**
+     * RTP 双向对讲推流（startSendRtpTalk）。
+     */
+    public static StartSendRtpResult startSendRtpTalk(String host, String secret, StartSendRtpTalkReq req) {
+        return executeApiCall(host, secret, ApiConstants.START_SEND_RTP_TALK, req,
+                new TypeReference<StartSendRtpResult>() {}, StartSendRtpTalkReq::getTalkMap);
+    }
+
+    // ==================== 批次 H：文件下载 ====================
+
+    /**
+     * 下载文件（按 file_path 下载到本地 target，复用字节流落盘逻辑）。
+     *
+     * @param filePath ZLM 服务器上的文件绝对路径
+     * @param saveName 浏览器下载文件名（可选，可为 null）
+     * @param target   本地落盘目标文件
+     * @return 落盘后的绝对路径，失败返回 null
+     */
+    public static String downloadFile(String host, String secret, String filePath, String saveName, File target) {
+        Map<String, String> params = new HashMap<>();
+        params.put("file_path", filePath);
+        if (saveName != null) {
+            params.put("save_name", saveName);
+        }
+        return doApiImg(host, secret, ApiConstants.DOWNLOAD_FILE, params, target);
+    }
+
+    /**
+     * 下载二进制（如配置文件 downloadBin），落盘到本地 target。
+     */
+    public static String downloadBin(String host, String secret, File target) {
+        return doApiImg(host, secret, ApiConstants.DOWNLOAD_BIN, new HashMap<>(), target);
+    }
+
+    // ==================== 批次 D：多屏拼接（POST + JSON body）====================
+
+    /**
+     * 多屏拼接 - 开始（POST JSON body）。
+     */
+    public static ServerResponse<String> stackStart(String host, String secret, StackReq req) {
+        String response = doApiJson(host, secret, ApiConstants.STACK_START, JSON.toJSONString(req));
+        return JSON.parseObject(response, new TypeReference<ServerResponse<String>>() {});
+    }
+
+    /**
+     * 多屏拼接 - 重置（POST JSON body）。
+     */
+    public static ServerResponse<String> stackReset(String host, String secret, StackReq req) {
+        String response = doApiJson(host, secret, ApiConstants.STACK_RESET, JSON.toJSONString(req));
+        return JSON.parseObject(response, new TypeReference<ServerResponse<String>>() {});
+    }
+
+    /**
+     * 多屏拼接 - 停止（GET，单参 id）。
+     */
+    public static ServerResponse<String> stackStop(String host, String secret, String id) {
+        return executeApiCallWithSingleParam(host, secret, ApiConstants.STACK_STOP, "id", id, new TypeReference<ServerResponse<String>>() {});
+    }
+
+    // ==================== 批次 E：WebRTC 房间管理 ====================
+
+    /**
+     * WebRTC 注册到信令服务器（server_host/server_port/room_id）。
+     */
+    public static ServerResponse<String> addWebrtcRoomKeeper(String host, String secret, Map<String, String> params) {
+        return executeApiCall(host, secret, ApiConstants.ADD_WEBRTC_ROOM_KEEPER, params, new TypeReference<ServerResponse<String>>() {});
+    }
+
+    /**
+     * WebRTC 从信令服务器注销（room_key）。
+     */
+    public static ServerResponse<String> delWebrtcRoomKeeper(String host, String secret, String roomKey) {
+        return executeApiCallWithSingleParam(host, secret, ApiConstants.DEL_WEBRTC_ROOM_KEEPER, "room_key", roomKey,
+                new TypeReference<ServerResponse<String>>() {});
+    }
+
+    /**
+     * WebRTC 房间守护者列表。
+     */
+    public static ServerResponse<List<String>> listWebrtcRoomKeepers(String host, String secret) {
+        return executeApiCall(host, secret, ApiConstants.LIST_WEBRTC_ROOM_KEEPERS, new HashMap<>(),
+                new TypeReference<ServerResponse<List<String>>>() {});
+    }
+
+    /**
+     * WebRTC 房间列表。
+     */
+    public static ServerResponse<List<String>> listWebrtcRooms(String host, String secret) {
+        return executeApiCall(host, secret, ApiConstants.LIST_WEBRTC_ROOMS, new HashMap<>(),
+                new TypeReference<ServerResponse<List<String>>>() {});
+    }
+
+    /**
+     * WebRTC 代理播放器信息（key）。
+     */
+    public static ServerResponse<String> getWebrtcProxyPlayerInfo(String host, String secret, String key) {
+        return executeApiCallWithSingleParam(host, secret, ApiConstants.GET_WEBRTC_PROXY_PLAYER_INFO, "key", key,
+                new TypeReference<ServerResponse<String>>() {});
+    }
+
+    // ==================== 批次 F：WebRTC 交互（SDP 文本 body）====================
+
+    /**
+     * WebRTC 交互（body 为 SDP offer，返回 SDP answer 文本）。query 含 type/app/stream。
+     */
+    public static String webrtc(String host, String secret, Map<String, String> query, String sdpOffer) {
+        return doApiText(host, secret, ApiConstants.WEBRTC, query, sdpOffer);
+    }
+
+    /**
+     * WebRTC WHIP 标准推流（body 为 SDP offer，返回 SDP answer 文本）。
+     */
+    public static String whip(String host, String secret, Map<String, String> query, String sdpOffer) {
+        return doApiText(host, secret, ApiConstants.WHIP, query, sdpOffer);
+    }
+
+    /**
+     * WebRTC WHEP 标准播放（body 为 SDP offer，返回 SDP answer 文本）。
+     */
+    public static String whep(String host, String secret, Map<String, String> query, String sdpOffer) {
+        return doApiText(host, secret, ApiConstants.WHEP, query, sdpOffer);
+    }
+
+    /**
+     * 删除 WebRTC 连接（DELETE 方法，id/token 来自 whip/whep 返回的 Location 头）。
+     */
+    public static ServerResponse<String> deleteWebrtc(String host, String id, String token) {
+        Map<String, String> params = new HashMap<>();
+        params.put("id", id);
+        params.put("token", token);
+        String response = HttpUtils.doDeleteHandler(host, ApiConstants.DELETE_WEBRTC, new HashMap<>(), params, StringUtils.EMPTY);
+        return JSON.parseObject(response, new TypeReference<ServerResponse<String>>() {});
+    }
+
+    // ==================== 批次 G：ONVIF ====================
+
+    /**
+     * 搜索 ONVIF 设备（subnet_prefix）。
+     */
+    public static ServerResponse<List<String>> searchOnvifDevice(String host, String secret, String subnetPrefix) {
+        return executeApiCallWithSingleParam(host, secret, ApiConstants.SEARCH_ONVIF_DEVICE, "subnet_prefix", subnetPrefix,
+                new TypeReference<ServerResponse<List<String>>>() {});
+    }
+
+    /**
+     * 获取 ONVIF 设备流地址（onvif_url）。
+     */
+    public static ServerResponse<String> getOnvifStreamUrl(String host, String secret, String onvifUrl) {
+        return executeApiCallWithSingleParam(host, secret, ApiConstants.GET_ONVIF_STREAM_URL, "onvif_url", onvifUrl,
+                new TypeReference<ServerResponse<String>>() {});
+    }
+
+    // ==================== 批次 I：鉴权 ====================
+
+    /**
+     * 登录鉴权：digest = MD5("zlmediakit:" + secret + ":" + cookie)。
+     */
+    public static ServerResponse<String> login(String host, String secret, String cookie) {
+        String digest = DigestUtils.md5DigestAsHex(("zlmediakit:" + secret + ":" + cookie).getBytes());
+        return executeApiCallWithSingleParam(host, secret, ApiConstants.LOGIN, "digest", digest,
+                new TypeReference<ServerResponse<String>>() {});
+    }
+
+    /**
+     * 注销鉴权。
+     */
+    public static ServerResponse<String> logout(String host, String secret) {
+        return executeApiCall(host, secret, ApiConstants.LOGOUT, new HashMap<>(), new TypeReference<ServerResponse<String>>() {});
+    }
+
     public static String doApi(String host, String secret, String path, Map<String, String> params) {
         Assert.notNull(host, "host is null");
         Assert.notNull(path, "api is null");
@@ -649,5 +896,35 @@ public class ZlmRestService {
         }
         FileTools.write(bytes, file.getAbsolutePath());
         return file.getAbsolutePath();
+    }
+
+    /**
+     * POST + JSON body 调用（用于 stack/start、stack/reset 等 body 提交接口）。
+     * secret 作为 query 参数，jsonBody 作为请求体；不破坏现有 {@link #doApi} 的 query 提交模型。
+     */
+    public static String doApiJson(String host, String secret, String path, String jsonBody) {
+        Assert.notNull(host, "host is null");
+        Assert.notNull(path, "api is null");
+        Assert.notNull(secret, "secret is null");
+
+        Map<String, String> params = new HashMap<>();
+        params.put("secret", secret);
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/json");
+        return HttpUtils.doPostHander(host, path, headers, params, Optional.ofNullable(jsonBody).orElse(StringUtils.EMPTY));
+    }
+
+    /**
+     * POST + 文本 body 调用（用于 webrtc/whip/whep 的 SDP 文本提交，返回也是 SDP 文本）。
+     * query 为查询参数（type/app/stream 等），textBody 为 SDP offer 文本。
+     */
+    public static String doApiText(String host, String secret, String path, Map<String, String> query, String textBody) {
+        Assert.notNull(host, "host is null");
+        Assert.notNull(path, "api is null");
+        Assert.notNull(secret, "secret is null");
+
+        Map<String, String> params = Optional.ofNullable(query).map(HashMap::new).orElseGet(HashMap::new);
+        params.put("secret", secret);
+        return HttpUtils.doPostHander(host, path, new HashMap<>(), params, Optional.ofNullable(textBody).orElse(StringUtils.EMPTY));
     }
 }
